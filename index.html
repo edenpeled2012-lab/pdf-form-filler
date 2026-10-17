@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>מילוי טפסים — PDF</title>
+<link rel="stylesheet" href="src/css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span aria-hidden="true">✒</span><span>מילוי טפסים</span></div>
+  <div class="tools">
+    <label class="btn primary">פתח PDF<input type="file" id="file" accept="application/pdf" hidden></label>
+    <button class="btn" id="redetect" disabled>זהה מחדש</button>
+    <button class="btn ghost" id="addmode" disabled aria-pressed="false" title="רשת ביטחון — רק אם שדה פוספס">+ שדה</button>
+    <button class="btn ghost" id="aibtn" hidden aria-pressed="false" title="שיפור הזיהוי בעזרת Claude (אופציונלי)">✨ AI</button>
+    <span class="sep"></span>
+    <button class="btn icon" id="zoomout" disabled title="הקטן">&minus;</button>
+    <span class="zoom" id="zoomlabel">125%</span>
+    <button class="btn icon" id="zoomin" disabled title="הגדל">+</button>
+    <span class="sep"></span>
+    <button class="btn" id="exportmap" disabled title="מפת השדות שזוהו, כמו detected_fields.json">ייצוא מפה</button>
+    <button class="btn primary" id="download" disabled>הורד PDF</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <div class="panel-head"><h2>שדות למילוי</h2><span class="count" id="fieldcount">0</span></div>
+    <div class="legend">
+      <span><i class="dot src-acroform"></i>שדה טופס</span>
+      <span><i class="dot src-cross"></i>תווית + קו</span>
+      <span><i class="dot src-weak"></i>קו בלבד</span>
+    </div>
+    <div id="fieldlist" class="fieldlist"></div>
+    <div class="panel-foot" id="docinfo"></div>
+  </aside>
+
+  <section class="stage" id="stage">
+    <div class="empty" id="empty">
+      <h1>גרור לכאן PDF</h1>
+      <p id="privacy">המסמך נשאר במחשב שלך — שום דבר לא נשלח לשרת.</p>
+      <ul>
+        <li>הזיהוי אוטומטי לגמרי — לא צריך לסמן או לאשר כלום</li>
+        <li>תאריך נפתח כלוח שנה, חתימה כמשטח ציור — גם כשבקובץ הם שדה טקסט</li>
+        <li>עובד גם על טופס שטוח בלי שדות טופס אמיתיים — וגם על טופס סרוק</li>
+      </ul>
+      <div class="examples">
+        <span>אין טופס בהישג יד? נסה טופס לדוגמה:</span>
+        <a class="btn" href="examples/talpiot.pdf" data-name="טופס פנייה - תלפיות.pdf">טופס פנייה</a>
+        <a class="btn" href="examples/health.pdf" data-name="הצהרה - משרד הבריאות.pdf">הצהרה עם תיבות סימון</a>
+        <a class="btn" href="examples/btl.pdf" data-name="בקשה - ביטוח לאומי.pdf">ביטוח לאומי</a>
+      </div>
+    </div>
+    <div id="pages" class="pages"></div>
+  </section>
+</main>
+
+<div class="modal" id="signmodal" hidden><div class="sheet">
+  <h3>חתימה</h3><p class="hint">צייר עם העכבר, העט או האצבע</p>
+  <canvas id="signpad" width="840" height="300"></canvas>
+  <div class="sheet-actions">
+    <button class="btn" id="signclear">נקה</button><span class="grow"></span>
+    <button class="btn" id="signcancel">ביטול</button><button class="btn primary" id="signok">הוסף חתימה</button>
+  </div>
+</div></div>
+
+<div class="modal" id="datemodal" hidden><div class="sheet narrow">
+  <h3>בחירת תאריך</h3>
+  <div class="cal-head">
+    <button class="btn icon" id="calnext" title="חודש הבא">‹</button>
+    <div class="cal-title"><select id="calmonth" aria-label="חודש"></select><select id="calyear" aria-label="שנה"></select></div>
+    <button class="btn icon" id="calprev" title="חודש קודם">›</button>
+  </div>
+  <div class="cal-dow" id="caldow"></div>
+  <div class="cal-grid" id="calgrid"></div>
+  <div class="cal-formats">
+    <label for="calformat">תצורה</label>
+    <select id="calformat">
+      <option value="dd/mm/yyyy">31/12/2026</option>
+      <option value="dd.mm.yyyy">31.12.2026</option>
+      <option value="dd-mm-yyyy">31-12-2026</option>
+      <option value="yyyy-mm-dd">2026-12-31</option>
+      <option value="he-long">31 בדצמבר 2026</option>
+    </select>
+    <output id="calpreview" class="cal-preview"></output>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn" id="caltoday">היום</button><span class="grow"></span>
+    <button class="btn" id="calcancel">ביטול</button><button class="btn primary" id="calok">הוסף תאריך</button>
+  </div>
+</div></div>
+
+<div class="modal" id="aimodal" hidden><div class="sheet narrow">
+  <h3>שיפור הזיהוי עם AI</h3>
+  <p class="hint">אחרי הזיהוי האוטומטי, Claude מסתכל על כל עמוד: מסנן סימונים מיותרים, נותן לכל שדה שם וסוג, ומוסיף שדות שפוספסו.
+    כשהמצב פעיל, תמונות העמודים נשלחות ל-Anthropic. המפתח נשמר רק בדפדפן הזה.</p>
+  <label class="field-label" for="aikey">מפתח API של Anthropic</label>
+  <input id="aikey" class="text-input" type="password" dir="ltr" autocomplete="off" placeholder="sk-ant-...">
+  <label class="check"><input type="checkbox" id="aion"> להפעיל AI אחרי כל זיהוי</label>
+  <p class="hint" id="aistatus" aria-live="polite"></p>
+  <div class="sheet-actions">
+    <span class="grow"></span>
+    <button class="btn" id="aicancel">ביטול</button><button class="btn primary" id="aisave">שמור</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast" hidden></div>
+<div class="progress" id="progress" hidden><div class="bar"><i id="barfill"></i></div><span id="progresstext"></span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="src/js/detect.js"></script>
+<script src="src/js/ui.js"></script>
+<script src="src/js/viewer.js"></script>
+<script src="src/js/export.js"></script>
+<script src="src/js/ai.js"></script>
+<script src="src/js/app.js"></script>
+</body>
+</html>
